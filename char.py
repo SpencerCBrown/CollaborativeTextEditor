@@ -6,6 +6,8 @@ class Identifier:
     def __init__(self, digit, site):
         self.digit = digit
         self.site = site
+    def __str__(self):
+        return "(" + str(self.digit) + "," + str(self.site) + ")"
 
 class Char:
     def __init__(self, position, lamport, value):
@@ -41,12 +43,15 @@ def compareIdentifier(id1, id2):
 def fromIdentifierList(ids):
     return [id.digit for id in ids]
 
+def safeIndex(l, i):
+    return l[i] if i < len(l) else None
+
 def subtractGreaterThan(n1, n2):
     carry = 0
     diff = [None] * max(len(n1), len(n2))
     for i in range(len(diff) - 1, -1, -1):
-        d1 = (n1[i] or 0) - carry
-        d2 = (n2[i] or 0)
+        d1 = (safeIndex(n1, i) or 0) - carry
+        d2 = (safeIndex(n2, i)or 0)
         if (d1 < d2):
             carry = 1
             diff[i] = d1 + BASE - d2
@@ -59,7 +64,9 @@ def add(n1, n2):
     carry = 0
     diff = [None] * max(len(n1), len(n2))
     for i in range(len(diff) - 1, -1, -1):
-        sum = (n1[i] or 0) + (n2[i] or 0) + carry
+        firstOp = safeIndex(n1, i) or 0
+        secondOp = safeIndex(n2, i) or 0
+        sum = firstOp + secondOp + carry
         carry = floor(sum / BASE)
         diff[i] = (sum % BASE)
     if (carry != 0):
@@ -67,7 +74,7 @@ def add(n1, n2):
     return diff
 
 def increment(n1, delta):
-    firstNonzeroDigit = next(i for i,v in enumerate(delta) if v != 0)
+    firstNonzeroDigit = next((i for i,v in enumerate(delta) if v != 0), -1)
     inc = delta[0:firstNonzeroDigit] + [0,1]
     v1 = add(n1, inc)
     v2 = add(v1, inc) if v1[len(v1) - 1] == 0 else v1
@@ -80,7 +87,7 @@ def constructPosition(digit, index, before, after, creationSite, n):
         return Identifier(digit, before[index].site)
     elif (index < len(after) and digit == after[index].digit):
         return Identifier(digit, after[index].site)
-    else
+    else:
         return Identifier(digit, creationSite)
 
 def toIdentifierList(n, before, after, creationSite):
@@ -89,19 +96,22 @@ def toIdentifierList(n, before, after, creationSite):
 # p1 and p2 are lists of identifier
 def generatePositionBetween(p1, p2, site):
     head1 = p1[0] if len(p1) > 0 else Identifier(0, site)
-    head2 = p2[0] if len(p2) > 0 else Identifier(0, site)
+    head2 = p2[0] if len(p2) > 0 else Identifier(BASE, site)
     if (head1.digit != head2.digit):
         n1 = fromIdentifierList(p1)
         n2 = fromIdentifierList(p2)
         delta = subtractGreaterThan(n2, n1)
         nxt = increment(n1, delta)
-        return toIdentifierList(nxt, p1, p2, site)
+        idlist = toIdentifierList(nxt, p1, p2, site)
+        return idlist
     else:
         if (head1.site < head2.site):
-            return generatePositionBetween(p1[1:], [], site).append(0, head1)
+            recId = generatePositionBetween(p1[1:], [], site)
+            recId.insert(0, head1)
+            return recId
         elif (head1.site == head2.site):
-            return generatePositionBetween(p1[1:], p2[1:], site).append(0, head1)
+            recId = generatePositionBetween(p1[1:], p2[1:], site)
+            recId.insert(0, head1)
+            return recId
         else:
             print("ERROR, site ordering shouldn't be possible.")
-
-

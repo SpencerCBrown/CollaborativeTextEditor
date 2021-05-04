@@ -1,10 +1,62 @@
 import tkinter as tk
 from threading import *
+from editor import Editor
+from change import EditorChange
+
+def onModification(event):
+    # print(event.widget.beforePosition)
+    # print(event.widget.afterPosition)
+    (beforeLine, beforeColumn) = event.widget.beforePosition.split(".")
+    (afterLine, afterColumn) = event.widget.afterPosition.split(".")
+    beforeLine = int(beforeLine)
+    beforeColumn = int(beforeColumn)
+    afterLine = int(afterLine)
+    afterColumn = int(afterColumn)
+
+    # 3 possibilities:
+    #column goes backward (before-after = 1): character at "after" was deleted
+    #column goes forward (before-after = -1): character was inserted at "before"
+    #column doesn't change: (before-after = 0): character at after/before was deleted.
+    # line possibilities:
+    # increases lbefore-lafter = -1: newline was inserted at before
+    # decreases lbefore-lafter = 1: newline was deleted
+    # line doesn't change: character at position was deleted (could be newline)
+    # to make these consistent, newlines should be considered at the end of a line
+
+    lineDelta = beforeLine - afterLine
+    columnDelta = beforeColumn - afterColumn
+    beforeLines = event.widget.beforeText.splitlines(True)
+
+    if (lineDelta == 0 and columnDelta == 0):
+        # once in a while this is seemingly called before the first character is inserted.
+        # Seems like maybe a sporadic bug in tkinter. Not worth fixing, in my mind. 
+        # It doesn't prevent me from showing off the actual point of the project - the CRDT and communication.
+        
+        # Character at (beforeLine, beforeColumn) == (afterLine, afterColumn) deleted
+        print(repr(beforeLines[beforeLine-1][beforeColumn]))
+        change = EditorChange(beforeLine, beforeColumn, "", beforeLines[beforeLine-1][beforeColumn])
+    elif (columnDelta == 1 and lineDelta == 0): # edge case: have to ensure that we don't mistake 'linefeed effect' for deletion
+        # Character at (afterLine, afterColumn) deleted
+        change = EditorChange(afterLine, afterColumn, "", beforeLines[afterLine-1][afterColumn])
+    elif (columnDelta == -1):
+        # Character inserted at (beforeLine, beforeColumn)
+        change = EditorChange(beforeLine, beforeColumn, event.widget.eventChar, "")
+    elif (lineDelta == -1):
+        # Newline inserted at (beforeLine, beforeColumn)
+        change = EditorChange(beforeLine, beforeColumn, event.widget.eventChar, "")
+    elif (lineDelta == 1):
+        # Newline deleted at (afterLine, afterColumn) Remember, newlines are at the end
+        change = EditorChange(afterLine, afterColumn, "", beforeLines[afterLine-1][afterColumn])
+
+    event.widget.editor.applyLocalChange(change)
 
 class CustomText(tk.Text):
     def __init__(self, *args, **kwargs):
         """A text widget that report on internal widget commands"""
         tk.Text.__init__(self, *args, **kwargs)
+
+        # custom editor object
+        self.editor = Editor()
 
         # create a proxy for the underlying widget
         self._orig = self._w + "_orig"
@@ -13,7 +65,17 @@ class CustomText(tk.Text):
 
     def _proxy(self, command, *args):
         cmd = (self._orig, command) + args
+
+        if command in ("insert", "delete", "replace"):
+            self.beforePosition = self.index(tk.INSERT)
+            self.beforeText = self.get("1.0", "end-1c")
+            if (len(args) > 1): # have to check because deletions don't include content
+                self.eventChar = args[1]
+                # print(args)
         result = self.tk.call(cmd)
+
+        if command in ("insert", "delete", "replace"):
+            self.afterPosition = self.index(tk.INSERT)
 
         if command in ("insert", "delete", "replace"):
             self.event_generate("<<TextModified>>")
@@ -42,18 +104,9 @@ text_info.pack(fill=tk.BOTH)
 # configuring the scrollbar
 scrollbar.config(command=text_info.yview)
 
-
-def onModification(event):
-    chars = event.widget.get("1.0", "end-1c")
-    print(chars)
-
 text_info.bind("<<TextModified>>", onModification)
 
-# def printtext():
-#     while 1:
-#      print(text_info.get("1.0", 'end-1c'))
-
-# thread = Thread(target = printtext)
+# thread = Thread(target = function)
 # thread.start()
   
 root.mainloop()
