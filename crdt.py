@@ -66,9 +66,9 @@ class CRDT:
                 else:
                     # this is apparently the last line
                     # so append to this line, or if there is a newline in this line, create a nextLine and put there
-                    if l[-1].value == "\n":
+                    if len(l) != 0 and l[-1].value == "\n":
                         # create new line, insert char, then append line
-                        pass
+                        return (i + 2, 0, False)
                     else:
                         return (i + 1, len(l), False)
 
@@ -86,7 +86,7 @@ class CRDT:
                 # this works if line is empty too
                 before = line[:charidx]
                 after = line[charidx:]
-                before = before + char
+                before = before + [char]
 
                 # replace line(s) in lines list
                 # TODO: might need to circle back here. The [after] makes me nervous. What if it's empty?
@@ -114,7 +114,7 @@ class CRDT:
             if (char.value == "\n"):
                 self.lines = self.lines[:lineidx - 1] + [before + self.getLine(lineidx)] + self.lines[lineidx + 1:]
             else:
-                self.lines = self.lines[:lineidx - 1] + [(before + after)] + self.lines[lineidx]
+                self.lines = self.lines[:lineidx - 1] + [(before + after)] + self.lines[lineidx:]
         else:
             # had to have gotten a duplicate message somehow. Log and discard.
             print("Remote Change request deletes character nonexistent in local CRDT. Duplicate message?")
@@ -167,6 +167,11 @@ class CRDT:
         l1 = line[:change.column]
         l2 = line[change.column+1:]
         deletedChar = line[change.column]
+
+        # this should hopefully purge empty lines
+        if (len(l1) == 0 and len(l2) == 0):
+            self.lines = self.lines[:change.line - 1] + self.lines[change.line + 1:]
+            return deletedChar
 
         if (change.removed == "\n"):
             nextline = self.getLine(change.line) # following line

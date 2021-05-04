@@ -1,9 +1,30 @@
 import tkinter as tk
 from threading import *
+import jsonpickle
+import os
+
 from editor import Editor
 from change import EditorChange
+from change import RemoteChange
+from message import Mailbox
+
+def cleanup():
+    # text_info.mailbox.stop()
+    # This is beyond inelegent, but...
+    os._exit(0)
+
+def onMessageReceived(ch, method, properties, body):
+    remoteChangeRequest = jsonpickle.decode(body)
+    #print(remoteChangeRequest.command)
+    newstring = text_info.editor.applyRemoteChange(remoteChangeRequest)
+    text_info.suspend_modify_callback()
+    text_info.delete(1.0,"end")
+    text_info.insert(1.0, newstring)
+    text_info.resume_modify_callback()
 
 def onModification(event):
+    if event.widget.event_callback_suspended:
+        return
     # print(event.widget.beforePosition)
     # print(event.widget.afterPosition)
     (beforeLine, beforeColumn) = event.widget.beforePosition.split(".")
@@ -33,7 +54,7 @@ def onModification(event):
         # It doesn't prevent me from showing off the actual point of the project - the CRDT and communication.
         
         # Character at (beforeLine, beforeColumn) == (afterLine, afterColumn) deleted
-        print(repr(beforeLines[beforeLine-1][beforeColumn]))
+        #print(repr(beforeLines[beforeLine-1][beforeColumn]))
         change = EditorChange(beforeLine, beforeColumn, "", beforeLines[beforeLine-1][beforeColumn])
     elif (columnDelta == 1 and lineDelta == 0): # edge case: have to ensure that we don't mistake 'linefeed effect' for deletion
         # Character at (afterLine, afterColumn) deleted
@@ -49,14 +70,20 @@ def onModification(event):
         change = EditorChange(afterLine, afterColumn, "", beforeLines[afterLine-1][afterColumn])
 
     event.widget.editor.applyLocalChange(change)
+    #broadcast.broadcast_message(change)
 
 class CustomText(tk.Text):
     def __init__(self, *args, **kwargs):
         """A text widget that report on internal widget commands"""
         tk.Text.__init__(self, *args, **kwargs)
+        self.event_callback_suspended = False
+
+        # create Mailbox object
+        self.mailbox = Mailbox(onMessageReceived)
 
         # custom editor object
-        self.editor = Editor()
+        self.editor = Editor(self.mailbox)
+        self.mailbox.startListening()
 
         # create a proxy for the underlying widget
         self._orig = self._w + "_orig"
@@ -82,6 +109,13 @@ class CustomText(tk.Text):
 
         return result
 
+    # Have to stop my modification callback before I apply remote changes from the CRDT to the text widget
+    # Otherwise it generates two extraneous events which break everything - Crazy recursion.
+    def suspend_modify_callback(self):
+        self.event_callback_suspended = True
+    def resume_modify_callback(self):
+        self.event_callback_suspended = False
+
 root = tk.Tk()
 root.geometry("350x250")
 root.title("Sticky Notes")
@@ -96,7 +130,7 @@ scrollbar = tk.Scrollbar(root)
 scrollbar.pack(side=tk.RIGHT,
                fill=tk.Y)
   
-  
+# create custom text widget
 text_info = CustomText(root,
                  yscrollcommand=scrollbar.set)
 text_info.pack(fill=tk.BOTH)
@@ -104,9 +138,13 @@ text_info.pack(fill=tk.BOTH)
 # configuring the scrollbar
 scrollbar.config(command=text_info.yview)
 
+# bind callback for custom onModification event in custom text widget
 text_info.bind("<<TextModified>>", onModification)
 
-# thread = Thread(target = function)
-# thread.start()
+# setup callback:
+# When received message, send to editor to process. Blocking. (is this wise? Tentatively, I think so.)
+# When returned, set the text widget content with editor.getString
+
+root.protocol("WM_DELETE_WINDOW", cleanup)
   
 root.mainloop()
