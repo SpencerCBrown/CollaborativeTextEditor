@@ -3,10 +3,16 @@ import sys
 from threading import *
 
 class Mailbox:
-    def __init__(self, receive_callback):
+    def __init__(self, receive_callback, configPath):
+        self.readConfig(configPath)
         self.callback = receive_callback
         self.setup_broadcast()
         self.thread = Thread(target = do_consuming, args=(self.channel,self.callback))
+
+    def readConfig(self, configPath):
+        f = open(configPath, "r")
+        host = f.readlines()[0].rstrip('\n')
+        rabbitMQHost = host
 
     def startListening(self):
         self.thread.start()

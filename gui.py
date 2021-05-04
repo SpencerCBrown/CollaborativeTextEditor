@@ -79,7 +79,7 @@ class CustomText(tk.Text):
         self.event_callback_suspended = False
 
         # create Mailbox object
-        self.mailbox = Mailbox(onMessageReceived)
+        self.mailbox = Mailbox(onMessageReceived, "config.txt")
 
         # custom editor object
         self.editor = Editor(self.mailbox)
